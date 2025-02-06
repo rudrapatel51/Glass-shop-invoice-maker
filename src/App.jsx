@@ -199,15 +199,15 @@ const App = () => {
           <Table>
             <TableHead>
               <TableRow>
-                <TableCell>Particular</TableCell>
-                <TableCell>X</TableCell>
-                <TableCell>Y</TableCell>
+                <TableCell>Particular(Glass)</TableCell>
+                <TableCell>X(Length)</TableCell>
+                <TableCell>Y(Breadth)</TableCell>
                 <TableCell>Quantity</TableCell>
                 <TableCell>SqFt</TableCell>
-                <TableCell>Rate</TableCell>
+                <TableCell>Glass.Rate</TableCell>
                 <TableCell>G.Total</TableCell>
                 <TableCell>RunFt</TableCell>
-                <TableCell>R.Rate</TableCell>
+                <TableCell>Polish.Rate</TableCell>
                 <TableCell>RF.Total</TableCell>
                 <TableCell>Total</TableCell>
                 <TableCell>Action</TableCell>
