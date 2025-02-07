@@ -14,13 +14,43 @@ import {
   Typography,
   Card,
   CardContent,
+  Container,
+  ThemeProvider,
+  createTheme,
+  Grid,
+  AppBar,
+  Toolbar,
+  useMediaQuery,
 } from '@mui/material';
-import { Trash, Download as DownloadIcon,CirclePlus } from 'lucide-react';
+import { Trash, Download, Plus } from 'lucide-react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
+// Create a custom theme
+const theme = createTheme({
+  palette: {
+    primary: {
+      main: '#1976d2',
+    },
+    secondary: {
+      main: '#dc004e',
+    },
+  },
+  typography: {
+    h4: {
+      fontWeight: 600,
+    },
+    h6: {
+      fontWeight: 600,
+    },
+  },
+});
+
 const App = () => {
   const invoiceRef = useRef();
+  const printRef = useRef();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
   const [customerDetails, setCustomerDetails] = useState({
     name: '',
     date: '',
@@ -104,212 +134,382 @@ const App = () => {
   };
 
   const totals = calculateTotals();
+
   const generatePDF = async () => {
-    const element = invoiceRef.current;
-    
-    // Configure html2canvas with better settings
-    const canvas = await html2canvas(element, {
-      scale: 2,
-      logging: false,
-      useCORS: true,
-      backgroundColor: '#E0FFFF', // Light cyan background like in image
-      width: element.scrollWidth,
-      height: element.scrollHeight,
-      windowWidth: element.scrollWidth,
-      windowHeight: element.scrollHeight
-    });
-    
-    const imgData = canvas.toDataURL('image/png');
-    
-    // Create PDF with A4 format
-    const pdf = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4'
-    });
+    try {
+      const element = printRef.current;
+      
+      await new Promise(resolve => setTimeout(resolve, 100));
   
-    const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = pdf.internal.pageSize.getHeight();
-    
-    // Add company details at top
-    pdf.setFontSize(16);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('ESTIMATE / ORDER', pdfWidth/2, 15, { align: 'center' });
-    
-    // Add the main content
-    pdf.addImage(imgData, 'PNG', 0, 20, pdfWidth, (canvas.height * pdfWidth) / canvas.width);
-    
-    // Add terms at bottom
-    pdf.setFontSize(10);
-    pdf.setFont('helvetica', 'normal');
-    const terms = [
-      'Terms:',
-      'Labour & Delivery Charge Will Be Extra',
-      '50% Payment against Order and 50% Before delivery',
-      'No Guarantee On Mirror',
-      'We are not responsible for any loss or damage during transit [ Scratches & chipping ]',
-      'This quote is Valid for 7 days Approval Rate.'
-    ];
-    
-    let yPos = pdfHeight - 40;
-    terms.forEach(term => {
-      pdf.text(term, 10, yPos);
-      yPos += 5;
-    });
+      const printElement = element.querySelector('table');
+      if (printElement) {
+        printElement.style.width = '100%';
+        printElement.style.tableLayout = 'fixed';
+        
+        const cells = printElement.querySelectorAll('th, td');
+        cells.forEach(cell => {
+          cell.style.padding = '4px';
+          cell.style.fontSize = '8px';
+          cell.style.whiteSpace = 'nowrap';
+          cell.style.overflow = 'hidden';
+          cell.style.textOverflow = 'ellipsis';
+        });
+      }
   
-    // Add signature line
-    pdf.text('Authorized Sig.', pdfWidth - 50, pdfHeight - 20);
-    
-    pdf.save(`estimate-${customerDetails.name || 'unnamed'}-${new Date().toISOString().split('T')[0]}.pdf`);
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        logging: true,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        width: element.scrollWidth,
+        height: element.scrollHeight,
+        onclone: (document) => {
+          const printElement = document.querySelector('[ref="printRef"]');
+          if (printElement) {
+            printElement.style.display = 'block';
+            printElement.style.width = '100%';
+            const table = printElement.querySelector('table');
+            if (table) {
+              table.style.display = 'table';
+              table.style.width = '100%';
+            }
+          }
+        }
+      });
+      
+      const imgData = canvas.toDataURL('image/jpeg', 1.0);
+      
+      const pdf = new jsPDF({
+        orientation: 'portrait', 
+        unit: 'mm',
+        format: 'a4'
+      });
+  
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      
+      const imgWidth = pdfWidth - 20; 
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      
+      // Header
+      pdf.setFillColor(25, 118, 210);
+      pdf.rect(0, 0, pdfWidth, 20, 'F');
+      
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('ESTIMATE / ORDER', pdfWidth/2, 15, { align: 'center' });
+      
+      pdf.setTextColor(0, 0, 0);
+      
+      try {
+        pdf.addImage(imgData, 'JPEG', 10, 25, imgWidth, imgHeight);
+      } catch (error) {
+        console.error('Error adding image to PDF:', error);
+      }
+      
+      pdf.setFontSize(8);
+      pdf.setFont('helvetica', 'normal');
+      const terms = [
+        'Terms:',
+        'Labour & Delivery Charge Will Be Extra',
+        '50% Payment against Order and 50% Before delivery',
+        'No Guarantee On Mirror',
+        'We are not responsible for any loss or damage during transit [ Scratches & chipping ]',
+        'This quote is Valid for 7 days Approval Rate.'
+      ];
+      
+      let yPos = pdfHeight - 30;
+      terms.forEach(term => {
+        pdf.text(term, 10, yPos);
+        yPos += 4;
+      });
+  
+      pdf.text('Authorized Sig.', pdfWidth - 40, pdfHeight - 10);
+      
+      pdf.save(`estimate-${customerDetails.name || 'unnamed'}-${new Date().toISOString().split('T')[0]}.pdf`);
+    } catch (error) {
+      console.error('PDF generation error:', error);
+      alert('Error generating PDF. Please try again.');
+    }
   };
 
-
   return (
-    <Box className="p-4 max-w-7xl mx-auto">
-      <div ref={invoiceRef}>
-        <Card className="mb-4">
-          <CardContent>
-            <Typography variant="h5" className="mb-4">Customer Details</Typography>
-            <Box className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <TextField
-                label="Customer Name"
-                value={customerDetails.name}
-                onChange={(e) => setCustomerDetails({...customerDetails, name: e.target.value})}
-                fullWidth
-              />
-              <TextField
-                label="Date"
-                type="date"
-                value={customerDetails.date}
-                onChange={(e) => setCustomerDetails({...customerDetails, date: e.target.value})}
-                InputLabelProps={{ shrink: true }}
-                fullWidth
-              />
-              <TextField
-                label="Mobile Number"
-                value={customerDetails.mobile}
-                onChange={(e) => setCustomerDetails({...customerDetails, mobile: e.target.value})}
-                fullWidth
-              />
-            </Box>
-          </CardContent>
-        </Card>
+    <ThemeProvider theme={theme}>
+      <Box sx={{ minHeight: '100vh', bgcolor: '#f5f5f5' }}>
+        <AppBar position="static" sx={{ mb: 4 }}>
+          <Toolbar>
+            <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+              Invoice Generator
+            </Typography>
+          </Toolbar>
+        </AppBar>
 
-        <TableContainer component={Paper} className="mb-4">
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Particular(Glass)</TableCell>
-                <TableCell>X(Length)</TableCell>
-                <TableCell>Y(Breadth)</TableCell>
-                <TableCell>Quantity</TableCell>
-                <TableCell>SqFt</TableCell>
-                <TableCell>Glass.Rate</TableCell>
-                <TableCell>G.Total</TableCell>
-                <TableCell>RunFt</TableCell>
-                <TableCell>Polish.Rate</TableCell>
-                <TableCell>RF.Total</TableCell>
-                <TableCell>Total</TableCell>
-                <TableCell>Action</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {products.map((product, index) => (
-                <TableRow key={index}>
-                  <TableCell>
+        <Container maxWidth="xl">
+          <div ref={invoiceRef}>
+            <Card sx={{ mb: 4 }}>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Customer Details
+                </Typography>
+                <Grid container spacing={3}>
+                  <Grid item xs={12} sm={4}>
                     <TextField
-                      value={product.particular}
-                      onChange={(e) => handleProductChange(index, 'particular', e.target.value)}
-                      size="small"
+                      label="Customer Name"
+                      value={customerDetails.name}
+                      onChange={(e) => setCustomerDetails({...customerDetails, name: e.target.value})}
+                      fullWidth
+                      variant="outlined"
                     />
-                  </TableCell>
-                  <TableCell>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
                     <TextField
-                      value={product.x}
-                      onChange={(e) => handleProductChange(index, 'x', e.target.value)}
-                      type="number"
-                      size="small"
+                      label="Date"
+                      type="date"
+                      value={customerDetails.date}
+                      onChange={(e) => setCustomerDetails({...customerDetails, date: e.target.value})}
+                      InputLabelProps={{ shrink: true }}
+                      fullWidth
+                      variant="outlined"
                     />
-                  </TableCell>
-                  <TableCell>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
                     <TextField
-                      value={product.y}
-                      onChange={(e) => handleProductChange(index, 'y', e.target.value)}
-                      type="number"
-                      size="small"
+                      label="Mobile Number"
+                      value={customerDetails.mobile}
+                      onChange={(e) => setCustomerDetails({...customerDetails, mobile: e.target.value})}
+                      fullWidth
+                      variant="outlined"
                     />
-                  </TableCell>
-                  <TableCell>
-                    <TextField
-                      value={product.quantity}
-                      onChange={(e) => handleProductChange(index, 'quantity', e.target.value)}
-                      type="number"
-                      size="small"
-                    />
-                  </TableCell>
-                  <TableCell>{product.sqFt}</TableCell>
-                  <TableCell>
-                    <TextField
-                      value={product.rate}
-                      onChange={(e) => handleProductChange(index, 'rate', e.target.value)}
-                      type="number"
-                      size="small"
-                    />
-                  </TableCell>
-                  <TableCell>{product.gTotal}</TableCell>
-                  <TableCell>{product.runFt}</TableCell>
-                  <TableCell>
-                    <TextField
-                      value={product.rRate}
-                      onChange={(e) => handleProductChange(index, 'rRate', e.target.value)}
-                      type="number"
-                      size="small"
-                    />
-                  </TableCell>
-                  <TableCell>{product.rfTotal}</TableCell>
-                  <TableCell>{product.total}</TableCell>
-                  <TableCell>
-                    <IconButton onClick={() => removeProduct(index)} size="small">
-                      <Trash className="w-4 h-4" />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-        <Box className="flex justify-between mt-4">
-        <Button
-          variant="contained"
-          startIcon={<CirclePlus/>}
-          onClick={addProduct}
-        >
-          Add Glass
-        </Button>
-        </Box>
-        <Card>
-          <CardContent>
-            <Typography variant="h6" className="mb-2">Totals</Typography>
-            <Box className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Typography>G.Total: {totals.gTotal.toFixed(2)}</Typography>
-              <Typography>RF.Total: {totals.rfTotal.toFixed(2)}</Typography>
-              <Typography>Total: {totals.total.toFixed(2)}</Typography>
-            </Box>
-          </CardContent>
-        </Card>
-      </div>
+                  </Grid>
+                </Grid>
+              </CardContent>
+            </Card>
 
-      <Box className="flex justify-between mt-4">
-        <Button
-          variant="contained"
-          color="secondary"
-          startIcon={<DownloadIcon />}
-          onClick={generatePDF}
-        >
-          Download PDF
-        </Button>
+            {/* Hidden Print Section */}
+          <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
+  <div ref={printRef} style={{ backgroundColor: '#ffffff', padding: '20px', width: '210mm' }}>
+       <Box sx={{ p: 2 }}>
+                  <Grid container spacing={2} sx={{ mb: 2 }}>
+                    <Grid item xs={4}>
+                      <Typography variant="subtitle1">Customer: {customerDetails.name}</Typography>
+                    </Grid>
+                    <Grid item xs={4}>
+                      <Typography variant="subtitle1">Date: {customerDetails.date}</Typography>
+                    </Grid>
+                    <Grid item xs={4}>
+                      <Typography variant="subtitle1">Mobile: {customerDetails.mobile}</Typography>
+                    </Grid>
+                  </Grid>
+
+                  <TableContainer component={Paper}>
+                  <Table size="small" style={{ width: '100%' }}>
+                  <TableHead>
+      <TableRow>
+        <TableCell sx={{ width: '15%' }}>Particular(Glass)</TableCell>
+        <TableCell sx={{ width: '10%' }}>X(Length)</TableCell>
+        <TableCell sx={{ width: '10%' }}>Y(Breadth)</TableCell>
+        <TableCell sx={{ width: '10%' }}>Quantity</TableCell>
+        <TableCell sx={{ width: '10%' }}>SqFt</TableCell>
+        <TableCell sx={{ width: '10%' }}>Glass.Rate</TableCell>
+        <TableCell sx={{ width: '10%' }}>G.Total</TableCell>
+        <TableCell sx={{ width: '10%' }}>RunFt</TableCell>
+        <TableCell sx={{ width: '10%' }}>Polish.Rate</TableCell>
+        <TableCell sx={{ width: '10%' }}>RF.Total</TableCell>
+        <TableCell sx={{ width: '10%' }}>Total</TableCell>
+      </TableRow>
+    </TableHead>
+    <TableBody>
+      {products.map((product, index) => (
+        <TableRow key={index}>
+          <TableCell>{product.particular}</TableCell>
+          <TableCell>{product.x}</TableCell>
+          <TableCell>{product.y}</TableCell>
+          <TableCell>{product.quantity}</TableCell>
+          <TableCell>{product.sqFt}</TableCell>
+          <TableCell>{product.rate}</TableCell>
+          <TableCell>{product.gTotal}</TableCell>
+          <TableCell>{product.runFt}</TableCell>
+          <TableCell>{product.rRate}</TableCell>
+          <TableCell>{product.rfTotal}</TableCell>
+          <TableCell>{product.total}</TableCell>
+        </TableRow>
+      ))}
+    </TableBody>
+  </Table>
+</TableContainer>
+
+
+                  <Box sx={{ mt: 2, p: 1, bgcolor: '#f5f5f5' }}>
+                    <Grid container spacing={2}>
+                      <Grid item xs={4}>
+                        <Typography variant="subtitle1">G.Total: ₹{totals.gTotal.toFixed(2)}</Typography>
+                      </Grid>
+                      <Grid item xs={4}>
+                        <Typography variant="subtitle1">RF.Total: ₹{totals.rfTotal.toFixed(2)}</Typography>
+                      </Grid>
+                      <Grid item xs={4}>
+                        <Typography variant="subtitle1">Total: ₹{totals.total.toFixed(2)}</Typography>
+                      </Grid>
+                    </Grid>
+                  </Box>
+                </Box>
+              </div>
+            </div>
+
+            {/* Editable Products Table */}
+            <TableContainer component={Paper} sx={{ mb: 4, overflowX: 'auto' }}>
+              <Table>
+                <TableHead>
+                  <TableRow sx={{ bgcolor: 'primary.main' }}>
+                    <TableCell sx={{ color: 'white' }}>Particular(Glass)</TableCell>
+                    <TableCell sx={{ color: 'white' }}>X(Length)</TableCell>
+                    <TableCell sx={{ color: 'white' }}>Y(Breadth)</TableCell>
+                    <TableCell sx={{ color: 'white' }}>Quantity</TableCell>
+                    <TableCell sx={{ color: 'white' }}>SqFt</TableCell>
+                    <TableCell sx={{ color: 'white' }}>Glass.Rate</TableCell>
+                    <TableCell sx={{ color: 'white' }}>G.Total</TableCell>
+                    <TableCell sx={{ color: 'white' }}>RunFt</TableCell>
+                    <TableCell sx={{ color: 'white' }}>Polish.Rate</TableCell>
+                    <TableCell sx={{ color: 'white' }}>RF.Total</TableCell>
+                    <TableCell sx={{ color: 'white' }}>Total</TableCell>
+                    <TableCell sx={{ color: 'white' }}>Action</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {products.map((product, index) => (
+                    <TableRow key={index}>
+                      <TableCell>
+                        <TextField
+                          value={product.particular}
+                          onChange={(e) => handleProductChange(index, 'particular', e.target.value)}
+                          size="small"
+                          variant="outlined"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <TextField
+                          value={product.x}
+                          onChange={(e) => handleProductChange(index, 'x', e.target.value)}
+                          type="number"
+                          size="small"
+                          variant="outlined"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <TextField
+                          value={product.y}
+                          onChange={(e) => handleProductChange(index, 'y', e.target.value)}
+                          type="number"
+                          size="small"
+                          variant="outlined"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <TextField
+                          value={product.quantity}
+                          onChange={(e) => handleProductChange(index, 'quantity', e.target.value)}
+                          type="number"
+                          size="small"
+                          variant="outlined"
+                        />
+                      </TableCell>
+                      <TableCell>{product.sqFt}</TableCell>
+                      <TableCell>
+                        <TextField
+                          value={product.rate}
+                          onChange={(e) => handleProductChange(index, 'rate', e.target.value)}
+                          type="number"
+                          size="small"
+                          variant="outlined"
+                        />
+                      </TableCell>
+                      <TableCell>{product.gTotal}</TableCell>
+                      <TableCell>{product.runFt}</TableCell>
+                      <TableCell>
+                        <TextField
+                          value={product.rRate}
+                          onChange={(e) => handleProductChange(index, 'rRate', e.target.value)}
+                          type="number"
+                          size="small"
+                          variant="outlined"
+                        />
+                      </TableCell>
+                      <TableCell>{product.rfTotal}</TableCell>
+                      <TableCell>{product.total}</TableCell>
+                      <TableCell>
+                        <IconButton 
+                          onClick={() => removeProduct(index)}
+                          color="secondary"
+                          size="small"
+                        >
+                          <Trash />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+
+            {/* Add Product Button */}
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 4 }}>
+              <Button
+                variant="contained"
+                startIcon={<Plus />}
+                onClick={addProduct}
+              >
+                Add Glass
+              </Button>
+            </Box>
+
+            {/* Totals Card */}
+            <Card sx={{ mb: 4 }}>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Invoice Summary
+                </Typography>
+                <Grid container spacing={3}>
+                  <Grid item xs={12} sm={4}>
+                    <Paper sx={{ p: 2, bgcolor: '#f5f5f5' }}>
+                      <Typography variant="subtitle1">
+                        G.Total: ₹{totals.gTotal.toFixed(2)}
+                      </Typography>
+                    </Paper>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Paper sx={{ p: 2, bgcolor: '#f5f5f5' }}>
+                      <Typography variant="subtitle1">
+                        RF.Total: ₹{totals.rfTotal.toFixed(2)}
+                      </Typography>
+                    </Paper>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Paper sx={{ p: 2, bgcolor: '#f5f5f5' }}>
+                      <Typography variant="subtitle1">
+                        Total: ₹{totals.total.toFixed(2)}
+                      </Typography>
+                    </Paper>
+                  </Grid>
+                </Grid>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Download PDF Button */}
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 4 }}>
+            <Button
+              variant="contained"
+              color="secondary"
+              startIcon={<Download />}
+              onClick={generatePDF}
+            >
+              Download PDF
+            </Button>
+          </Box>
+        </Container>
       </Box>
-    </Box>
+    </ThemeProvider>
   );
 };
 
