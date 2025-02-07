@@ -198,7 +198,7 @@ const App = () => {
       pdf.setTextColor(255, 255, 255);
       pdf.setFontSize(12);
       pdf.setFont('helvetica', 'bold');
-      pdf.text('ESTIMATE / ORDER', pdfWidth/2, 15, { align: 'center' });
+      pdf.text('ESTIMATE / ORDER OF MAHADEV GLASS', pdfWidth/2, 15, { align: 'center' });
       
       pdf.setTextColor(0, 0, 0);
       
