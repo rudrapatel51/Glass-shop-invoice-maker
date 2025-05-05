@@ -84,7 +84,7 @@ const InvoiceForm = () => {
 
     const sqFt = ((x * y) / 144) * quantity;
     const gTotal = sqFt * rate;
-    const runFt = (((x / 12) + (y / 12)) * 2);
+    const runFt = (((x / 12) + (y / 12)) * 2*quantity);
     const rfTotal = runFt * rRate;
     const total = gTotal + rfTotal;
 
@@ -400,12 +400,12 @@ const InvoiceForm = () => {
 
                   <Box sx={{ mt: 2, p: 1, bgcolor: '#f5f5f5' }}>
                     <Grid container spacing={2}>
-                      <Grid item xs={4}>
+                      {/* <Grid item xs={4}>
                         <Typography variant="subtitle1">G.Total: ₹{totals.gTotal.toFixed(2)}</Typography>
                       </Grid>
                       <Grid item xs={4}>
                         <Typography variant="subtitle1">RF.Total: ₹{totals.rfTotal.toFixed(2)}</Typography>
-                      </Grid>
+                      </Grid> */}
                       <Grid item xs={4}>
                         <Typography variant="subtitle1">Total: ₹{totals.total.toFixed(2)}</Typography>
                       </Grid>
@@ -529,18 +529,18 @@ const InvoiceForm = () => {
                 </Typography>
                 <Grid container spacing={3}>
                   <Grid item xs={12} sm={4}>
-                    <Paper sx={{ p: 2, bgcolor: '#f5f5f5' }}>
+                    {/* <Paper sx={{ p: 2, bgcolor: '#f5f5f5' }}>
                       <Typography variant="subtitle1">
                         G.Total: ₹{totals.gTotal.toFixed(2)}
                       </Typography>
-                    </Paper>
+                    </Paper> */}
                   </Grid>
                   <Grid item xs={12} sm={4}>
-                    <Paper sx={{ p: 2, bgcolor: '#f5f5f5' }}>
+                    {/* <Paper sx={{ p: 2, bgcolor: '#f5f5f5' }}>
                       <Typography variant="subtitle1">
                         RF.Total: ₹{totals.rfTotal.toFixed(2)}
                       </Typography>
-                    </Paper>
+                    </Paper> */}
                   </Grid>
                   <Grid item xs={12} sm={4}>
                     <Paper sx={{ p: 2, bgcolor: '#f5f5f5' }}>
