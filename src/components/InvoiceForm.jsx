@@ -21,8 +21,10 @@ import {
   AppBar,
   Toolbar,
   useMediaQuery,
+  Menu,
+  MenuItem,
 } from '@mui/material';
-import { Trash, Download, Plus } from 'lucide-react';
+import { Trash, Download, Plus, ChevronDown } from 'lucide-react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -55,6 +57,10 @@ const InvoiceForm = () => {
   const printRef = useRef();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
+  // Menu state for add button
+  const [anchorEl, setAnchorEl] = useState(null);
+  const open = Boolean(anchorEl);
+
   const [customerDetails, setCustomerDetails] = useState({
     name: '',
     date: '',
@@ -73,9 +79,21 @@ const InvoiceForm = () => {
     rRate: '',
     rfTotal: 0,
     total: 0,
+    isGlass: true, // New field to identify if it's a glass item
   }]);
 
   const calculateValues = (product) => {
+    // Only calculate if it's a glass item
+    if (!product.isGlass) {
+      return {
+        ...product,
+        sqFt: '',
+        gTotal: '',
+        runFt: '',
+        rfTotal: '',
+      };
+    }
+
     const x = parseFloat(product.x) || 0;
     const y = parseFloat(product.y) || 0;
     const quantity = parseFloat(product.quantity) || 0;
@@ -108,7 +126,15 @@ const InvoiceForm = () => {
     setProducts(newProducts);
   };
 
-  const addProduct = () => {
+  const handleMenuClick = (event) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleMenuClose = () => {
+    setAnchorEl(null);
+  };
+
+  const addProduct = (isGlass = true) => {
     setProducts([...products, {
       particular: '',
       x: '',
@@ -121,7 +147,9 @@ const InvoiceForm = () => {
       rRate: '',
       rfTotal: 0,
       total: 0,
+      isGlass: isGlass,
     }]);
+    handleMenuClose();
   };
 
   const removeProduct = (index) => {
@@ -130,114 +158,220 @@ const InvoiceForm = () => {
   };
 
   const calculateTotals = () => {
-    return products.reduce((acc, product) => ({
-      gTotal: acc.gTotal + parseFloat(product.gTotal || 0),
-      rfTotal: acc.rfTotal + parseFloat(product.rfTotal || 0),
-      total: acc.total + parseFloat(product.total || 0),
-    }), { gTotal: 0, rfTotal: 0, total: 0 });
+    return products.reduce((acc, product) => {
+      // Only include glass items in total calculations
+      if (product.isGlass) {
+        return {
+          gTotal: acc.gTotal + parseFloat(product.gTotal || 0),
+          rfTotal: acc.rfTotal + parseFloat(product.rfTotal || 0),
+          total: acc.total + parseFloat(product.total || 0),
+        };
+      } else {
+        // For custom fields, add only the total if it's a number
+        const customTotal = parseFloat(product.total) || 0;
+        return {
+          gTotal: acc.gTotal,
+          rfTotal: acc.rfTotal,
+          total: acc.total + customTotal,
+        };
+      }
+    }, { gTotal: 0, rfTotal: 0, total: 0 });
   };
 
   const totals = calculateTotals();
 
-  const generatePDF = async () => {
-    try {
-      const element = printRef.current;
-      
-      await new Promise(resolve => setTimeout(resolve, 100));
-  
-      const printElement = element.querySelector('table');
-      if (printElement) {
-        printElement.style.width = '100%';
-        printElement.style.tableLayout = 'fixed';
-        
-        const cells = printElement.querySelectorAll('th, td');
-        cells.forEach(cell => {
-          cell.style.padding = '4px';
-          cell.style.fontSize = '8px';
-          cell.style.whiteSpace = 'nowrap';
-          cell.style.overflow = 'hidden';
-          cell.style.textOverflow = 'ellipsis';
-        });
+const generatePDF = async () => {
+  try {
+    const pdf = new jsPDF({
+      orientation: 'portrait', 
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = pdf.internal.pageSize.getHeight();
+    
+    // Header Section
+    pdf.setFillColor(25, 118, 210);
+    pdf.rect(0, 0, pdfWidth, 25, 'F');
+    
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFontSize(16);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('ESTIMATE / ORDER OF MAHADEV GLASS', pdfWidth/2, 17, { align: 'center' });
+    
+    pdf.setTextColor(0, 0, 0);
+    
+    // Customer Details Section
+    pdf.setFontSize(12);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Customer Details:', 10, 40);
+    
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(10);
+    pdf.text(`Name: ${customerDetails.name || 'N/A'}`, 10, 50);
+    pdf.text(`Date: ${customerDetails.date || 'N/A'}`, 70, 50);
+    pdf.text(`Mobile: ${customerDetails.mobile || 'N/A'}`, 130, 50);
+    
+    // Draw a line separator
+    pdf.setLineWidth(0.5);
+    pdf.line(10, 55, pdfWidth - 10, 55);
+    
+    // Table Header
+    let yPos = 65;
+    const tableStartY = yPos;
+    
+    pdf.setFillColor(240, 240, 240);
+    pdf.rect(10, yPos, pdfWidth - 20, 8, 'F');
+    
+    pdf.setFontSize(8);
+    pdf.setFont('helvetica', 'bold');
+    
+    // Define column positions and widths
+    const columns = [
+      { title: 'Particular', x: 12, width: 30 },
+      { title: 'X(L)', x: 42, width: 12 },
+      { title: 'Y(B)', x: 54, width: 12 },
+      { title: 'Qty', x: 66, width: 12 },
+      { title: 'SqFt', x: 78, width: 15 },
+      { title: 'G.Rate', x: 93, width: 15 },
+      { title: 'G.Total', x: 108, width: 15 },
+      { title: 'RunFt', x: 123, width: 15 },
+      { title: 'P.Rate', x: 138, width: 15 },
+      { title: 'RF.Total', x: 153, width: 15 },
+      { title: 'Total', x: 168, width: 20 }
+    ];
+    
+    columns.forEach(col => {
+      pdf.text(col.title, col.x, yPos + 5);
+    });
+    
+    yPos += 10;
+    
+    // Table Data
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(7);
+    
+    products.forEach((product, index) => {
+      // Add new page if needed
+      if (yPos > pdfHeight - 50) {
+        pdf.addPage();
+        yPos = 20;
       }
-  
-      const canvas = await html2canvas(element, {
-        scale: 2,
-        logging: true,
-        useCORS: true,
-        backgroundColor: '#ffffff',
-        width: element.scrollWidth,
-        height: element.scrollHeight,
-        onclone: (document) => {
-          const printElement = document.querySelector('[ref="printRef"]');
-          if (printElement) {
-            printElement.style.display = 'block';
-            printElement.style.width = '100%';
-            const table = printElement.querySelector('table');
-            if (table) {
-              table.style.display = 'table';
-              table.style.width = '100%';
-            }
+      
+      // Alternate row colors
+      if (index % 2 === 0) {
+        pdf.setFillColor(250, 250, 250);
+        pdf.rect(10, yPos, pdfWidth - 20, 8, 'F');
+      }
+      
+      const rowData = [
+        { text: product.particular || '', x: 12, width: 28 },
+        { text: product.isGlass ? (product.x || '') : (product.x || ''), x: 42, width: 10 },
+        { text: product.isGlass ? (product.y || '') : (product.y || ''), x: 54, width: 10 },
+        { text: product.isGlass ? (product.quantity || '') : (product.quantity || ''), x: 66, width: 10 },
+        { text: product.isGlass ? (product.sqFt || '') : (product.sqFt || ''), x: 78, width: 13 },
+        { text: product.isGlass ? (product.rate || '') : (product.rate || ''), x: 93, width: 13 },
+        { text: product.isGlass ? (product.gTotal || '') : (product.gTotal || ''), x: 108, width: 13 },
+        { text: product.isGlass ? (product.runFt || '') : (product.runFt || ''), x: 123, width: 13 },
+        { text: product.isGlass ? (product.rRate || '') : (product.rRate || ''), x: 138, width: 13 },
+        { text: product.isGlass ? (product.rfTotal || '') : (product.rfTotal || ''), x: 153, width: 13 },
+        { text: product.total || '', x: 168, width: 18 }
+      ];
+      
+      rowData.forEach(cell => {
+        const text = String(cell.text);
+        if (text.length > 10) {
+          // Split long text into multiple lines
+          const lines = pdf.splitTextToSize(text, cell.width);
+          pdf.text(lines[0], cell.x, yPos + 5);
+          if (lines[1]) {
+            pdf.text(lines[1], cell.x, yPos + 8);
           }
+        } else {
+          pdf.text(text, cell.x, yPos + 5);
         }
       });
       
-      const imgData = canvas.toDataURL('image/jpeg', 1.0);
-      
-      const pdf = new jsPDF({
-        orientation: 'portrait', 
-        unit: 'mm',
-        format: 'a4'
-      });
-  
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-      
-      const imgWidth = pdfWidth - 20; 
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      
-      // Header
-      pdf.setFillColor(25, 118, 210);
-      pdf.rect(0, 0, pdfWidth, 20, 'F');
-      
-      pdf.setTextColor(255, 255, 255);
-      pdf.setFontSize(12);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('ESTIMATE / ORDER OF MAHADEV GLASS', pdfWidth/2, 15, { align: 'center' });
-      
-      pdf.setTextColor(0, 0, 0);
-      
-      try {
-        pdf.addImage(imgData, 'JPEG', 10, 25, imgWidth, imgHeight);
-      } catch (error) {
-        console.error('Error adding image to PDF:', error);
+      yPos += 10;
+    });
+    
+    // Add Total Row within the table
+    pdf.setFillColor(25, 118, 210);
+    pdf.rect(10, yPos, pdfWidth - 20, 10, 'F');
+    
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFontSize(9);
+    pdf.setFont('helvetica', 'bold');
+    
+    // Calculate totals for each column
+    const gTotalSum = products.reduce((sum, product) => sum + (parseFloat(product.gTotal) || 0), 0);
+    const rfTotalSum = products.reduce((sum, product) => sum + (parseFloat(product.rfTotal) || 0), 0);
+    
+    // Display totals in respective columns
+    pdf.text('TOTAL', 12, yPos + 7);
+    pdf.text(`${gTotalSum}`, 108, yPos + 7);
+    pdf.text(`${rfTotalSum}`, 153, yPos + 7);
+    pdf.text(`${totals.total}`, 168, yPos + 7);
+    
+    pdf.setTextColor(0, 0, 0);
+    yPos += 10;
+    
+    // Draw table borders
+    pdf.setLineWidth(0.3);
+    // Vertical lines
+    columns.forEach(col => {
+      pdf.line(col.x - 2, tableStartY, col.x - 2, yPos);
+    });
+    pdf.line(pdfWidth - 10, tableStartY, pdfWidth - 10, yPos);
+    
+    // Horizontal lines
+    pdf.line(10, tableStartY, pdfWidth - 10, tableStartY);
+    pdf.line(10, tableStartY + 8, pdfWidth - 10, tableStartY + 8);
+    pdf.line(10, yPos, pdfWidth - 10, yPos);
+    
+    // Terms and Conditions
+    yPos += 15;
+    pdf.setFontSize(10);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Terms & Conditions:', 10, yPos);
+    
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(8);
+    const terms = [
+      '• Labour & Delivery Charge Will Be Extra',
+      '• 50% Payment against Order and 50% Before delivery',
+      '• No Guarantee On Mirror',
+      '• We are not responsible for any loss or damage during transit [Scratches & chipping]',
+      '• This quote is Valid for 7 days Approval Rate.'
+    ];
+    
+    yPos += 8;
+    terms.forEach(term => {
+      if (yPos > pdfHeight - 20) {
+        pdf.addPage();
+        yPos = 20;
       }
-      
-      pdf.setFontSize(8);
-      pdf.setFont('helvetica', 'normal');
-      const terms = [
-        'Terms:',
-        'Labour & Delivery Charge Will Be Extra',
-        '50% Payment against Order and 50% Before delivery',
-        'No Guarantee On Mirror',
-        'We are not responsible for any loss or damage during transit [ Scratches & chipping ]',
-        'This quote is Valid for 7 days Approval Rate.'
-      ];
-      
-      let yPos = pdfHeight - 30;
-      terms.forEach(term => {
-        pdf.text(term, 10, yPos);
-        yPos += 4;
-      });
-  
-      pdf.text('Authorized Sig.', pdfWidth - 40, pdfHeight - 10);
-      
-      pdf.save(`estimate-${customerDetails.name || 'unnamed'}-${new Date().toISOString().split('T')[0]}.pdf`);
-    } catch (error) {
-      console.error('PDF generation error:', error);
-      alert('Error generating PDF. Please try again.');
-    }
-  };  
-  
+      pdf.text(term, 10, yPos);
+      yPos += 5;
+    });
+    
+    // Signature Section
+    const signatureY = Math.max(yPos + 15, pdfHeight - 25);
+    pdf.setFontSize(10);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Authorized Signature:', pdfWidth - 60, signatureY);
+    
+    // Draw signature line
+    pdf.setLineWidth(0.5);
+    pdf.line(pdfWidth - 45, signatureY + 10, pdfWidth - 10, signatureY + 10);
+    
+    pdf.save(`estimate-${customerDetails.name || 'unnamed'}-${new Date().toISOString().split('T')[0]}.pdf`);
+  } catch (error) {
+    console.error('PDF generation error:', error);
+    alert('Error generating PDF. Please try again.');
+  }
+};
   const saveInvoice = async () => {
     try {
       setLoading(true);
@@ -364,7 +498,7 @@ const InvoiceForm = () => {
                   <Table size="small" style={{ width: '100%' }}>
                   <TableHead>
       <TableRow>
-        <TableCell sx={{ width: '15%' }}>Particular(Glass)</TableCell>
+        <TableCell sx={{ width: '15%' }}>Particular</TableCell>
         <TableCell sx={{ width: '10%' }}>X(Length)</TableCell>
         <TableCell sx={{ width: '10%' }}>Y(Breadth)</TableCell>
         <TableCell sx={{ width: '10%' }}>Quantity</TableCell>
@@ -381,15 +515,15 @@ const InvoiceForm = () => {
       {products.map((product, index) => (
         <TableRow key={index}>
           <TableCell>{product.particular}</TableCell>
-          <TableCell>{product.x}</TableCell>
-          <TableCell>{product.y}</TableCell>
-          <TableCell>{product.quantity}</TableCell>
-          <TableCell>{product.sqFt}</TableCell>
-          <TableCell>{product.rate}</TableCell>
-          <TableCell>{product.gTotal}</TableCell>
-          <TableCell>{product.runFt}</TableCell>
-          <TableCell>{product.rRate}</TableCell>
-          <TableCell>{product.rfTotal}</TableCell>
+          <TableCell>{product.isGlass ? product.x : '-'}</TableCell>
+          <TableCell>{product.isGlass ? product.y : '-'}</TableCell>
+          <TableCell>{product.isGlass ? product.quantity : '-'}</TableCell>
+          <TableCell>{product.isGlass ? product.sqFt : '-'}</TableCell>
+          <TableCell>{product.isGlass ? product.rate : '-'}</TableCell>
+          <TableCell>{product.isGlass ? product.gTotal : '-'}</TableCell>
+          <TableCell>{product.isGlass ? product.runFt : '-'}</TableCell>
+          <TableCell>{product.isGlass ? product.rRate : '-'}</TableCell>
+          <TableCell>{product.isGlass ? product.rfTotal : '-'}</TableCell>
           <TableCell>{product.total}</TableCell>
         </TableRow>
       ))}
@@ -420,7 +554,7 @@ const InvoiceForm = () => {
               <Table>
                 <TableHead>
                   <TableRow sx={{ bgcolor: 'primary.main' }}>
-                    <TableCell sx={{ color: 'white' }}>Particular(Glass)</TableCell>
+                    <TableCell sx={{ color: 'white' }}>Particular</TableCell>
                     <TableCell sx={{ color: 'white' }}>X(Length)</TableCell>
                     <TableCell sx={{ color: 'white' }}>Y(Breadth)</TableCell>
                     <TableCell sx={{ color: 'white' }}>Quantity</TableCell>
@@ -436,65 +570,177 @@ const InvoiceForm = () => {
                 </TableHead>
                 <TableBody>
                   {products.map((product, index) => (
-                    <TableRow key={index}>
+                    <TableRow key={index} sx={{ bgcolor: product.isGlass ? 'inherit' : '#f8f9fa' }}>
                       <TableCell>
                         <TextField
                           value={product.particular}
                           onChange={(e) => handleProductChange(index, 'particular', e.target.value)}
                           size="small"
                           variant="outlined"
+                          placeholder={product.isGlass ? "Glass type..." : "Item description..."}
                         />
                       </TableCell>
                       <TableCell>
-                        <TextField
-                          value={product.x}
-                          onChange={(e) => handleProductChange(index, 'x', e.target.value)}
-                          type="number"
-                          size="small"
-                          variant="outlined"
-                        />
+                        {product.isGlass ? (
+                          <TextField
+                            value={product.x}
+                            onChange={(e) => handleProductChange(index, 'x', e.target.value)}
+                            type="number"
+                            size="small"
+                            variant="outlined"
+                          />
+                        ) : (
+                          <TextField
+                            value={product.x}
+                            onChange={(e) => handleProductChange(index, 'x', e.target.value)}
+                            size="small"
+                            variant="outlined"
+                            placeholder="Custom field..."
+                          />
+                        )}
                       </TableCell>
                       <TableCell>
-                        <TextField
-                          value={product.y}
-                          onChange={(e) => handleProductChange(index, 'y', e.target.value)}
-                          type="number"
-                          size="small"
-                          variant="outlined"
-                        />
+                        {product.isGlass ? (
+                          <TextField
+                            value={product.y}
+                            onChange={(e) => handleProductChange(index, 'y', e.target.value)}
+                            type="number"
+                            size="small"
+                            variant="outlined"
+                          />
+                        ) : (
+                          <TextField
+                            value={product.y}
+                            onChange={(e) => handleProductChange(index, 'y', e.target.value)}
+                            size="small"
+                            variant="outlined"
+                            placeholder="Custom field..."
+                          />
+                        )}
                       </TableCell>
                       <TableCell>
-                        <TextField
-                          value={product.quantity}
-                          onChange={(e) => handleProductChange(index, 'quantity', e.target.value)}
-                          type="number"
-                          size="small"
-                          variant="outlined"
-                        />
+                        {product.isGlass ? (
+                          <TextField
+                            value={product.quantity}
+                            onChange={(e) => handleProductChange(index, 'quantity', e.target.value)}
+                            type="number"
+                            size="small"
+                            variant="outlined"
+                          />
+                        ) : (
+                          <TextField
+                            value={product.quantity}
+                            onChange={(e) => handleProductChange(index, 'quantity', e.target.value)}
+                            size="small"
+                            variant="outlined"
+                            placeholder="Custom field..."
+                          />
+                        )}
                       </TableCell>
-                      <TableCell>{product.sqFt}</TableCell>
                       <TableCell>
-                        <TextField
-                          value={product.rate}
-                          onChange={(e) => handleProductChange(index, 'rate', e.target.value)}
-                          type="number"
-                          size="small"
-                          variant="outlined"
-                        />
+                        {product.isGlass ? (
+                          product.sqFt
+                        ) : (
+                          <TextField
+                            value={product.sqFt}
+                            onChange={(e) => handleProductChange(index, 'sqFt', e.target.value)}
+                            size="small"
+                            variant="outlined"
+                            placeholder="Custom field..."
+                          />
+                        )}
                       </TableCell>
-                      <TableCell>{product.gTotal}</TableCell>
-                      <TableCell>{product.runFt}</TableCell>
                       <TableCell>
-                        <TextField
-                          value={product.rRate}
-                          onChange={(e) => handleProductChange(index, 'rRate', e.target.value)}
-                          type="number"
-                          size="small"
-                          variant="outlined"
-                        />
+                        {product.isGlass ? (
+                          <TextField
+                            value={product.rate}
+                            onChange={(e) => handleProductChange(index, 'rate', e.target.value)}
+                            type="number"
+                            size="small"
+                            variant="outlined"
+                          />
+                        ) : (
+                          <TextField
+                            value={product.rate}
+                            onChange={(e) => handleProductChange(index, 'rate', e.target.value)}
+                            size="small"
+                            variant="outlined"
+                            placeholder="Custom field..."
+                          />
+                        )}
                       </TableCell>
-                      <TableCell>{product.rfTotal}</TableCell>
-                      <TableCell>{product.total}</TableCell>
+                      <TableCell>
+                        {product.isGlass ? (
+                          product.gTotal
+                        ) : (
+                          <TextField
+                            value={product.gTotal}
+                            onChange={(e) => handleProductChange(index, 'gTotal', e.target.value)}
+                            size="small"
+                            variant="outlined"
+                            placeholder="Custom field..."
+                          />
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {product.isGlass ? (
+                          product.runFt
+                        ) : (
+                          <TextField
+                            value={product.runFt}
+                            onChange={(e) => handleProductChange(index, 'runFt', e.target.value)}
+                            size="small"
+                            variant="outlined"
+                            placeholder="Custom field..."
+                          />
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {product.isGlass ? (
+                          <TextField
+                            value={product.rRate}
+                            onChange={(e) => handleProductChange(index, 'rRate', e.target.value)}
+                            type="number"
+                            size="small"
+                            variant="outlined"
+                          />
+                        ) : (
+                          <TextField
+                            value={product.rRate}
+                            onChange={(e) => handleProductChange(index, 'rRate', e.target.value)}
+                            size="small"
+                            variant="outlined"
+                            placeholder="Custom field..."
+                          />
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {product.isGlass ? (
+                          product.rfTotal
+                        ) : (
+                          <TextField
+                            value={product.rfTotal}
+                            onChange={(e) => handleProductChange(index, 'rfTotal', e.target.value)}
+                            size="small"
+                            variant="outlined"
+                            placeholder="Custom field..."
+                          />
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {product.isGlass ? (
+                          product.total
+                        ) : (
+                          <TextField
+                            value={product.total}
+                            onChange={(e) => handleProductChange(index, 'total', e.target.value)}
+                            type="number"
+                            size="small"
+                            variant="outlined"
+                            placeholder="Total amount..."
+                          />
+                        )}
+                      </TableCell>
                       <TableCell>
                         <IconButton 
                           onClick={() => removeProduct(index)}
@@ -510,15 +756,33 @@ const InvoiceForm = () => {
               </Table>
             </TableContainer>
 
-            {/* Add Product Button */}
+            {/* Add Product Button with Dropdown */}
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 4 }}>
               <Button
                 variant="contained"
                 startIcon={<Plus />}
-                onClick={addProduct}
+                endIcon={<ChevronDown />}
+                onClick={handleMenuClick}
               >
-                Add Glass
+                Add Item
               </Button>
+              <Menu
+                anchorEl={anchorEl}
+                open={open}
+                onClose={handleMenuClose}
+                MenuListProps={{
+                  'aria-labelledby': 'basic-button',
+                }}
+              >
+                <MenuItem onClick={() => addProduct(true)}>
+                  <Plus style={{ marginRight: '8px', width: '16px', height: '16px' }} />
+                  Add Glass
+                </MenuItem>
+                <MenuItem onClick={() => addProduct(false)}>
+                  <Plus style={{ marginRight: '8px', width: '16px', height: '16px' }} />
+                  Add Custom Field
+                </MenuItem>
+              </Menu>
             </Box>
 
             {/* Totals Card */}
